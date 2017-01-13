@@ -19,34 +19,11 @@
 
 #include <atomic>
 #include <stdlib.h>
+#include <audio_utils/fifo_index.h>
 
 #ifndef __cplusplus
 #error C API is no longer supported
 #endif
-
-/**
- * An index that may optionally be placed in shared memory.
- * Must be Plain Old Data (POD), so no virtual methods are allowed.
- * If in shared memory, exactly one process must explicitly call the constructor via placement new.
- * \see #audio_utils_fifo_sync
- */
-struct audio_utils_fifo_index {
-    friend class audio_utils_fifo_reader;
-    friend class audio_utils_fifo_writer;
-
-public:
-    audio_utils_fifo_index() : mIndex(0) { }
-    ~audio_utils_fifo_index() { }
-
-private:
-    // Linux futex is 32 bits regardless of platform.
-    // It would make more sense to declare this as atomic_uint32_t, but there is no such type name.
-    std::atomic_uint_least32_t  mIndex; // accessed by both sides using atomic operations
-    static_assert(sizeof(mIndex) == sizeof(uint32_t), "mIndex must be 32 bits");
-
-    // TODO Abstract out atomic operations to here
-    // TODO Replace friend by setter and getter, and abstract the futex
-};
 
 /** Indicates whether an index is also used for synchronization. */
 enum audio_utils_fifo_sync {
@@ -100,7 +77,7 @@ protected:
      *
      * \return The sum of index plus increment.
      */
-    uint32_t sum(uint32_t index, uint32_t increment);
+    uint32_t sum(uint32_t index, uint32_t increment) const;
 
     /** Return the difference between two indices: rear - front.
      *
@@ -114,7 +91,13 @@ protected:
      * \retval -EOVERFLOW  reader doesn't throttle writer, and frames were lost because reader
      *                     isn't keeping up with writer; see \p lost
      */
-    int32_t diff(uint32_t rear, uint32_t front, size_t *lost = NULL);
+    int32_t diff(uint32_t rear, uint32_t front, size_t *lost = NULL) const;
+
+    /**
+     * Mark the FIFO as shutdown (permanently unusable), usually due to an -EIO status from an API.
+     * Thereafter, all APIs that return a status will return -EIO, and other APIs will be no-ops.
+     */
+    void shutdown() const;
 
     // These fields are const after initialization
 
@@ -130,17 +113,20 @@ protected:
     const uint32_t mFudgeFactor;
 
     /** Reference to writer's rear index. */
-    audio_utils_fifo_index&     mWriterRear;
+    audio_utils_fifo_index&         mWriterRear;
     /** Indicates how synchronization is done for mWriterRear. */
-    audio_utils_fifo_sync       mWriterRearSync;
+    const audio_utils_fifo_sync     mWriterRearSync;
 
     /**
      * Pointer to the front index of at most one reader that throttles the writer,
      * or NULL for no throttling.
      */
-    audio_utils_fifo_index*     mThrottleFront;
+    audio_utils_fifo_index* const   mThrottleFront;
     /** Indicates how synchronization is done for mThrottleFront. */
-    audio_utils_fifo_sync       mThrottleFrontSync;
+    const audio_utils_fifo_sync     mThrottleFrontSync;
+
+    /** Whether FIFO is marked as shutdown due to detection of an "impossible" error condition. */
+    mutable bool                    mIsShutdown;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -251,17 +237,20 @@ public:
      *              iovec[0] describes the initial fragment of the slice, and
      *              iovec[1] describes the remaining non-virtually-contiguous fragment.
      *              Empty iovec[0] implies that iovec[1] is also empty.
+     *              iovec[0].mOffset and iovec[1].mOffset are always < capacity.
+     *              Typically iovec[1].mOffset is zero, but don't assume that.
      * \param count The maximum number of frames to obtain.
-     *              See the high/low setpoints for something which is close to, but not the same as,
+     *              See setHysteresis() for something which is close to, but not the same as,
      *              a minimum.
      * \param timeout Indicates the maximum time to block for at least one frame.
      *                NULL and {0, 0} both mean non-blocking.
      *                Time is expressed as relative CLOCK_MONOTONIC.
      *                As an optimization, if \p timeout->tv_sec is the maximum positive value for
      *                time_t (LONG_MAX), then the implementation treats it as infinite timeout.
+     *                See fifo_index.h for explanation of why representation is struct timespec.
      *
      * \return Actual number of frames available, if greater than or equal to zero.
-     *         Guaranteed to be <= \p count.
+     *         Guaranteed to be <= \p count and == iovec[0].mLength + iovec[1].mLength.
      *
      *  \retval -EIO        corrupted indices, no recovery is possible
      *  \retval -EOVERFLOW  reader doesn't throttle writer, and frames were lost because reader
@@ -276,6 +265,7 @@ public:
      *
      * Applications should treat all of these as equivalent to zero available frames,
      * except they convey extra information as to the cause.
+     * After any error, both iovec[0] and iovec[1] will be empty.
      */
     virtual ssize_t obtain(audio_utils_iovec iovec[2], size_t count,
             const struct timespec *timeout = NULL) = 0;
@@ -286,6 +276,7 @@ public:
      *
      * \param count Number of frames to release.  The cumulative number of frames released must not
      *              exceed the number of frames most recently obtained.
+     *              If it ever happens, then the FIFO will be marked unusable with shutdown().
      */
     virtual void release(size_t count) = 0;
 
@@ -363,6 +354,7 @@ public:
      *                Time is expressed as relative CLOCK_MONOTONIC.
      *                As an optimization, if \p timeout->tv_sec is the maximum positive value for
      *                time_t (LONG_MAX), then the implementation treats it as infinite timeout.
+     *                See fifo_index.h for explanation of why representation is struct timespec.
      *
      * \return Actual number of frames written, if greater than or equal to zero.
      *         Guaranteed to be <= \p count.
@@ -463,6 +455,8 @@ public:
      * \param fifo Associated FIFO.  Passed by reference because it must be non-NULL.
      * \param throttlesWriter Whether this reader throttles the writer.
      *                        At most one reader can specify throttlesWriter == true.
+     *                        A non-throttling reader does not see any data written
+     *                        prior to construction of the reader.
      */
     explicit audio_utils_fifo_reader(audio_utils_fifo& fifo, bool throttlesWriter = true);
     virtual ~audio_utils_fifo_reader();
@@ -477,6 +471,7 @@ public:
      *                Time is expressed as relative CLOCK_MONOTONIC.
      *                As an optimization, if \p timeout->tv_sec is the maximum positive value for
      *                time_t (LONG_MAX), then the implementation treats it as infinite timeout.
+     *                See fifo_index.h for explanation of why representation is struct timespec.
      * \param lost    If non-NULL, set to the approximate number of frames lost before
      *                re-synchronization when -EOVERFLOW occurs, or set to zero when no frames lost.
      *
@@ -534,7 +529,7 @@ public:
 
     /**
      * Flush (discard) all frames that could be obtained or read without blocking.
-     * Note that fluah is a method on a reader, so if the writer wants to flush
+     * Note that flush is a method on a reader, so if the writer wants to flush
      * then it must communicate the request to the reader(s) via an out-of-band channel.
      *
      * \param lost    If non-NULL, set to the approximate number of frames lost before
@@ -580,6 +575,9 @@ public:
     /**
      * Return the total number of lost frames since construction, due to reader not keeping up with
      * writer.  Does not include flushed frames.
+     * It is necessary to call read(), obtain(), or flush() prior to calling this method,
+     * in order to observe an increase in the total,
+     * but it is not necessary for the 'lost' parameter of those prior calls to be non-NULL.
      *
      * \return Total lost frames.
      */

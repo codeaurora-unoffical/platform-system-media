@@ -22,69 +22,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-// FIXME futex portion is not supported on macOS, should use the macOS alternative
-#ifdef __linux__
-#include <linux/futex.h>
-#include <sys/syscall.h>
-#else
-#define FUTEX_WAIT 0
-#define FUTEX_WAIT_PRIVATE 0
-#define FUTEX_WAKE 0
-#define FUTEX_WAKE_PRIVATE 0
-#endif
-
+#include <audio_utils/clock_nanosleep.h>
 #include <audio_utils/fifo.h>
+#include <audio_utils/futex.h>
 #include <audio_utils/roundup.h>
 #include <cutils/log.h>
 #include <utils/Errors.h>
-
-#ifdef __linux__
-#ifdef __ANDROID__
-// bionic for Android provides clock_nanosleep
-#else
-// bionic for desktop Linux omits clock_nanosleep
-int clock_nanosleep(clockid_t clock_id, int flags, const struct timespec *request,
-        struct timespec *remain)
-{
-    return syscall(SYS_clock_nanosleep, clock_id, flags, request, remain);
-}
-#endif  // __ANDROID__
-#else   // __linux__
-// macOS <10.12 doesn't have clockid_t / CLOCK_MONOTONIC
-#ifndef CLOCK_MONOTONIC
-typedef int clockid_t;
-#define CLOCK_MONOTONIC 0
-#endif
-// macOS doesn't have clock_nanosleep
-int clock_nanosleep(clockid_t clock_id, int flags, const struct timespec *request,
-        struct timespec *remain)
-{
-    (void) clock_id;
-    (void) flags;
-    (void) request;
-    (void) remain;
-    errno = ENOSYS;
-    return -1;
-}
-#endif  // __linux__
-
-static int sys_futex(void *addr1, int op, int val1, const struct timespec *timeout, void *addr2,
-        int val3)
-{
-#ifdef __linux__
-    return syscall(SYS_futex, addr1, op, val1, timeout, addr2, val3);
-#else   // __linux__
-    // macOS doesn't have futex
-    (void) addr1;
-    (void) op;
-    (void) val1;
-    (void) timeout;
-    (void) addr2;
-    (void) val3;
-    errno = ENOSYS;
-    return -1;
-#endif  // __linux__
-}
 
 audio_utils_fifo_base::audio_utils_fifo_base(uint32_t frameCount,
         audio_utils_fifo_index& writerRear, audio_utils_fifo_index *throttleFront)
@@ -93,7 +36,8 @@ audio_utils_fifo_base::audio_utils_fifo_base(uint32_t frameCount,
     mFudgeFactor(mFrameCountP2 - mFrameCount),
     // FIXME need an API to configure the sync types
     mWriterRear(writerRear), mWriterRearSync(AUDIO_UTILS_FIFO_SYNC_SHARED),
-    mThrottleFront(throttleFront), mThrottleFrontSync(AUDIO_UTILS_FIFO_SYNC_SHARED)
+    mThrottleFront(throttleFront), mThrottleFrontSync(AUDIO_UTILS_FIFO_SYNC_SHARED),
+    mIsShutdown(false)
 {
     // actual upper bound on frameCount will depend on the frame size
     LOG_ALWAYS_FATAL_IF(frameCount == 0 || frameCount > ((uint32_t) INT32_MAX));
@@ -103,7 +47,7 @@ audio_utils_fifo_base::~audio_utils_fifo_base()
 {
 }
 
-uint32_t audio_utils_fifo_base::sum(uint32_t index, uint32_t increment)
+uint32_t audio_utils_fifo_base::sum(uint32_t index, uint32_t increment) const
         __attribute__((no_sanitize("integer")))
 {
     if (mFudgeFactor) {
@@ -121,12 +65,15 @@ uint32_t audio_utils_fifo_base::sum(uint32_t index, uint32_t increment)
     }
 }
 
-int32_t audio_utils_fifo_base::diff(uint32_t rear, uint32_t front, size_t *lost)
+int32_t audio_utils_fifo_base::diff(uint32_t rear, uint32_t front, size_t *lost) const
         __attribute__((no_sanitize("integer")))
 {
     // TODO replace multiple returns by a single return point so this isn't needed
     if (lost != NULL) {
         *lost = 0;
+    }
+    if (mIsShutdown) {
+        return -EIO;
     }
     uint32_t diff = rear - front;
     if (mFudgeFactor) {
@@ -134,6 +81,9 @@ int32_t audio_utils_fifo_base::diff(uint32_t rear, uint32_t front, size_t *lost)
         uint32_t rearOffset = rear & mask;
         uint32_t frontOffset = front & mask;
         if (rearOffset >= mFrameCount || frontOffset >= mFrameCount) {
+            ALOGE("%s frontOffset=%u rearOffset=%u mFrameCount=%u",
+                    __func__, frontOffset, rearOffset, mFrameCount);
+            shutdown();
             return -EIO;
         }
         uint32_t genDiff = (rear & ~mask) - (front & ~mask);
@@ -156,6 +106,12 @@ int32_t audio_utils_fifo_base::diff(uint32_t rear, uint32_t front, size_t *lost)
         return -EOVERFLOW;
     }
     return (int32_t) diff;
+}
+
+void audio_utils_fifo_base::shutdown() const
+{
+    ALOGE("%s", __func__);
+    mIsShutdown = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -238,7 +194,8 @@ ssize_t audio_utils_fifo_writer::obtain(audio_utils_iovec iovec[2], size_t count
         int retries = kRetries;
         uint32_t front;
         for (;;) {
-            front = atomic_load_explicit(&mFifo.mThrottleFront->mIndex, std::memory_order_acquire);
+            front = mFifo.mThrottleFront->loadAcquire();
+            // returns -EIO if mIsShutdown
             int32_t filled = mFifo.diff(mLocalRear, front);
             if (filled < 0) {
                 // on error, return an empty slice
@@ -260,7 +217,8 @@ ssize_t audio_utils_fifo_writer::obtain(audio_utils_iovec iovec[2], size_t count
             int op = FUTEX_WAIT;
             switch (mFifo.mThrottleFrontSync) {
             case AUDIO_UTILS_FIFO_SYNC_SLEEP:
-                err = clock_nanosleep(CLOCK_MONOTONIC, 0 /*flags*/, timeout, NULL /*remain*/);
+                err = audio_utils_clock_nanosleep(CLOCK_MONOTONIC, 0 /*flags*/, timeout,
+                        NULL /*remain*/);
                 if (err < 0) {
                     LOG_ALWAYS_FATAL_IF(errno != EINTR, "unexpected err=%d errno=%d", err, errno);
                     err = -errno;
@@ -275,7 +233,7 @@ ssize_t audio_utils_fifo_writer::obtain(audio_utils_iovec iovec[2], size_t count
                 if (timeout->tv_sec == LONG_MAX) {
                     timeout = NULL;
                 }
-                err = sys_futex(&mFifo.mThrottleFront->mIndex, op, front, timeout, NULL, 0);
+                err = mFifo.mThrottleFront->wait(op, front, timeout);
                 if (err < 0) {
                     switch (errno) {
                     case EWOULDBLOCK:
@@ -304,7 +262,12 @@ ssize_t audio_utils_fifo_writer::obtain(audio_utils_iovec iovec[2], size_t count
             timeout = NULL;
         }
     } else {
-        availToWrite = mEffectiveFrames;
+        if (mFifo.mIsShutdown) {
+            err = -EIO;
+            availToWrite = 0;
+        } else {
+            availToWrite = mEffectiveFrames;
+        }
     }
     if (availToWrite > count) {
         availToWrite = count;
@@ -329,15 +292,19 @@ ssize_t audio_utils_fifo_writer::obtain(audio_utils_iovec iovec[2], size_t count
 void audio_utils_fifo_writer::release(size_t count)
         __attribute__((no_sanitize("integer")))
 {
+    // no need to do an early check for mIsShutdown, because the extra code executed is harmless
     if (count > 0) {
-        LOG_ALWAYS_FATAL_IF(count > mObtained);
+        if (count > mObtained) {
+            ALOGE("%s(count=%zu) > mObtained=%u", __func__, count, mObtained);
+            mFifo.shutdown();
+            return;
+        }
         if (mFifo.mThrottleFront != NULL) {
-            uint32_t front = atomic_load_explicit(&mFifo.mThrottleFront->mIndex,
-                    std::memory_order_acquire);
+            uint32_t front = mFifo.mThrottleFront->loadAcquire();
+            // returns -EIO if mIsShutdown
             int32_t filled = mFifo.diff(mLocalRear, front);
             mLocalRear = mFifo.sum(mLocalRear, count);
-            atomic_store_explicit(&mFifo.mWriterRear.mIndex, mLocalRear,
-                    std::memory_order_release);
+            mFifo.mWriterRear.storeRelease(mLocalRear);
             // TODO add comments
             int op = FUTEX_WAKE;
             switch (mFifo.mWriterRearSync) {
@@ -352,8 +319,7 @@ void audio_utils_fifo_writer::release(size_t count)
                         mIsArmed = true;
                     }
                     if (mIsArmed && filled + count > mTriggerLevel) {
-                        int err = sys_futex(&mFifo.mWriterRear.mIndex,
-                                op, INT32_MAX /*waiters*/, NULL, NULL, 0);
+                        int err = mFifo.mWriterRear.wake(op, INT32_MAX /*waiters*/);
                         // err is number of processes woken up
                         if (err < 0) {
                             LOG_ALWAYS_FATAL("%s: unexpected err=%d errno=%d",
@@ -369,8 +335,7 @@ void audio_utils_fifo_writer::release(size_t count)
             }
         } else {
             mLocalRear = mFifo.sum(mLocalRear, count);
-            atomic_store_explicit(&mFifo.mWriterRear.mIndex, mLocalRear,
-                    std::memory_order_release);
+            mFifo.mWriterRear.storeRelease(mLocalRear);
         }
         mObtained -= count;
         mTotalReleased += count;
@@ -432,7 +397,16 @@ void audio_utils_fifo_writer::getHysteresis(uint32_t *armLevel, uint32_t *trigge
 ////////////////////////////////////////////////////////////////////////////////
 
 audio_utils_fifo_reader::audio_utils_fifo_reader(audio_utils_fifo& fifo, bool throttlesWriter) :
-    audio_utils_fifo_provider(fifo), mLocalFront(0),
+    audio_utils_fifo_provider(fifo),
+
+    // If we throttle the writer, then initialize our front index to zero so that we see all data
+    // currently in the buffer.
+    // Otherwise, ignore everything currently in the buffer by initializing our front index to the
+    // current value of writer's rear.  This avoids an immediate -EOVERFLOW (overrun) in the case
+    // where reader starts out more than one buffer behind writer.  The initial catch-up does not
+    // contribute towards the totalLost, totalFlushed, or totalReleased counters.
+    mLocalFront(throttlesWriter ? 0 : mFifo.mWriterRear.loadConsume()),
+
     mThrottleFront(throttlesWriter ? mFifo.mThrottleFront : NULL),
     mArmLevel(-1), mTriggerLevel(mFifo.mFrameCount),
     mIsArmed(true), // because initial fill level of zero is > mArmLevel
@@ -474,15 +448,19 @@ ssize_t audio_utils_fifo_reader::obtain(audio_utils_iovec iovec[2], size_t count
 void audio_utils_fifo_reader::release(size_t count)
         __attribute__((no_sanitize("integer")))
 {
+    // no need to do an early check for mIsShutdown, because the extra code executed is harmless
     if (count > 0) {
-        LOG_ALWAYS_FATAL_IF(count > mObtained);
+        if (count > mObtained) {
+            ALOGE("%s(count=%zu) > mObtained=%u", __func__, count, mObtained);
+            mFifo.shutdown();
+            return;
+        }
         if (mThrottleFront != NULL) {
-            uint32_t rear = atomic_load_explicit(&mFifo.mWriterRear.mIndex,
-                    std::memory_order_acquire);
+            uint32_t rear = mFifo.mWriterRear.loadAcquire();
+            // returns -EIO if mIsShutdown
             int32_t filled = mFifo.diff(rear, mLocalFront);
             mLocalFront = mFifo.sum(mLocalFront, count);
-            atomic_store_explicit(&mThrottleFront->mIndex, mLocalFront,
-                    std::memory_order_release);
+            mThrottleFront->storeRelease(mLocalFront);
             // TODO add comments
             int op = FUTEX_WAKE;
             switch (mFifo.mThrottleFrontSync) {
@@ -497,8 +475,7 @@ void audio_utils_fifo_reader::release(size_t count)
                         mIsArmed = true;
                     }
                     if (mIsArmed && filled - count < mTriggerLevel) {
-                        int err = sys_futex(&mThrottleFront->mIndex,
-                                op, 1 /*waiters*/, NULL, NULL, 0);
+                        int err = mThrottleFront->wake(op, 1 /*waiters*/);
                         // err is number of processes woken up
                         if (err < 0 || err > 1) {
                             LOG_ALWAYS_FATAL("%s: unexpected err=%d errno=%d",
@@ -529,8 +506,7 @@ ssize_t audio_utils_fifo_reader::obtain(audio_utils_iovec iovec[2], size_t count
     int retries = kRetries;
     uint32_t rear;
     for (;;) {
-        rear = atomic_load_explicit(&mFifo.mWriterRear.mIndex,
-                std::memory_order_acquire);
+        rear = mFifo.mWriterRear.loadAcquire();
         // TODO pull out "count == 0"
         if (count == 0 || rear != mLocalFront || timeout == NULL ||
                 (timeout->tv_sec == 0 && timeout->tv_nsec == 0)) {
@@ -540,7 +516,8 @@ ssize_t audio_utils_fifo_reader::obtain(audio_utils_iovec iovec[2], size_t count
         int op = FUTEX_WAIT;
         switch (mFifo.mWriterRearSync) {
         case AUDIO_UTILS_FIFO_SYNC_SLEEP:
-            err = clock_nanosleep(CLOCK_MONOTONIC, 0 /*flags*/, timeout, NULL /*remain*/);
+            err = audio_utils_clock_nanosleep(CLOCK_MONOTONIC, 0 /*flags*/, timeout,
+                    NULL /*remain*/);
             if (err < 0) {
                 LOG_ALWAYS_FATAL_IF(errno != EINTR, "unexpected err=%d errno=%d", err, errno);
                 err = -errno;
@@ -555,7 +532,7 @@ ssize_t audio_utils_fifo_reader::obtain(audio_utils_iovec iovec[2], size_t count
             if (timeout->tv_sec == LONG_MAX) {
                 timeout = NULL;
             }
-            err = sys_futex(&mFifo.mWriterRear.mIndex, op, rear, timeout, NULL, 0);
+            err = mFifo.mWriterRear.wait(op, rear, timeout);
             if (err < 0) {
                 switch (errno) {
                 case EWOULDBLOCK:
@@ -587,6 +564,7 @@ ssize_t audio_utils_fifo_reader::obtain(audio_utils_iovec iovec[2], size_t count
     if (lost == NULL) {
         lost = &ourLost;
     }
+    // returns -EIO if mIsShutdown
     int32_t filled = mFifo.diff(rear, mLocalFront, lost);
     mTotalLost += *lost;
     mTotalReleased += *lost;
