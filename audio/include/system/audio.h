@@ -1070,18 +1070,8 @@ typedef enum {
     AUDIO_MICROPHONE_CHANNEL_MAPPING_UNUSED = 0,
     AUDIO_MICROPHONE_CHANNEL_MAPPING_DIRECT = 1,
     AUDIO_MICROPHONE_CHANNEL_MAPPING_PROCESSED = 2,
+    AUDIO_MICROPHONE_CHANNEL_MAPPING_CNT = 3,
 } audio_microphone_channel_mapping_t;
-
-typedef enum {
-    AUDIO_MICROPHONE_CHARACTERISTIC_NONE = 0u, // 0x0
-    AUDIO_MICROPHONE_CHARACTERISTIC_SENSITIVITY = 1u, // 0x1
-    AUDIO_MICROPHONE_CHARACTERISTIC_MAX_SPL = 2u, // 0x2
-    AUDIO_MICROPHONE_CHARACTERISTIC_MIN_SPL = 4u, // 0x4
-    AUDIO_MICROPHONE_CHARACTERISTIC_ORIENTATION = 8u, // 0x8
-    AUDIO_MICROPHONE_CHARACTERISTIC_GEOMETRIC_LOCATION = 16u, // 0x10
-    AUDIO_MICROPHONE_CHARACTERISTIC_ALL = 31u, /* ((((SENSITIVITY | MAX_SPL) | MIN_SPL)
-                                                  | ORIENTATION) | GEOMETRIC_LOCATION) */
-} audio_microphone_characteristic_fields_t;
 
 /* the maximum length for the microphone id */
 #define AUDIO_MICROPHONE_ID_MAX_LEN 32
@@ -1117,7 +1107,6 @@ struct audio_microphone_characteristic_t {
     float frequency_responses[2][AUDIO_MICROPHONE_MAX_FREQUENCY_RESPONSES];
     struct audio_microphone_coordinate geometric_location;
     struct audio_microphone_coordinate orientation;
-    audio_microphone_characteristic_fields_t valid_mask;
 };
 
 __END_DECLS
@@ -1215,6 +1204,11 @@ __END_DECLS
 #define AUDIO_PARAMETER_STREAM_SUP_SAMPLING_RATES "sup_sampling_rates"
 
 #define AUDIO_PARAMETER_VALUE_LIST_SEPARATOR "|"
+
+/* Reconfigure offloaded A2DP codec */
+#define AUDIO_PARAMETER_RECONFIG_A2DP "reconfigA2dp"
+/* Query if HwModule supports reconfiguration of offloaded A2DP codec */
+#define AUDIO_PARAMETER_A2DP_RECONFIG_SUPPORTED "isReconfigA2dpSupported"
 
 /**
  * audio codec parameters
