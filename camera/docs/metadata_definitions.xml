@@ -5210,6 +5210,11 @@ xsi:schemaLocation="http://schemas.android.com/service/camera/metadata/ metadata
               The camera device is a logical camera backed by two or more physical cameras that are
               also exposed to the application.
 
+              Camera application shouldn't assume that there are at most 1 rear camera and 1 front
+              camera in the system. For an application that switches between front and back cameras,
+              the recommendation is to switch between the first rear camera and the first front
+              camera in the list of supported camera devices.
+
               This capability requires the camera device to support the following:
 
               * This camera device must list the following static metadata entries in {@link
@@ -5324,6 +5329,14 @@ xsi:schemaLocation="http://schemas.android.com/service/camera/metadata/ metadata
           For a camera device with LOGICAL_MULTI_CAMERA capability, it should operate in the
           same way as a physical camera device based on its hardware level and capabilities.
           It's recommended that its feature set is superset of that of individual physical cameras.
+
+          * In camera1 API, to maintain application compatibility, for each {logical_camera_id,
+          physical_camera_1_id, physical_camera_2_id, ...} combination, where logical_camera_id
+          is composed of physical_camera_N_id, camera framework will only advertise one camera id
+          (within the combination) that is frontmost in the HAL published camera id list.
+
+          * Camera HAL is strongly recommended to advertise camera devices with best feature,
+          power, performance, and latency tradeoffs at the front of the camera id list.
 
           For MONOCHROME, the camera device must also advertise BACKWARD_COMPATIBLE capability, and
           it is exclusive of both RAW and MANUAL_POST_PROCESSING capabilities:
@@ -5497,6 +5510,11 @@ xsi:schemaLocation="http://schemas.android.com/service/camera/metadata/ metadata
 
           </details>
           <hal_details>
+          If android.control.aeTargetFpsRange is part of the session parameters and constrained high
+          speed mode is enabled, then only modifications of the maximum framerate value will be
+          monitored by the framework and can trigger camera re-configuration. For more information
+          about framerate ranges during constrained high speed sessions see
+          {@link android.hardware.camera2.CameraDevice#createConstrainedHighSpeedCaptureSession}.
           Vendor tags can be listed here. Vendor tag metadata should also
           use the extensions C api (refer to
           android.hardware.camera.device.V3_4.StreamConfiguration.sessionParams for more details).
@@ -5621,7 +5639,7 @@ xsi:schemaLocation="http://schemas.android.com/service/camera/metadata/ metadata
             android.sensor.info.activeArraySize to the sensor cropped pixel area size in this way:
                 1. Translate the requested cropRegion w.r.t., the left top corner of the sensor
                 cropped pixel area by (tx, ty),
-                where `tx = sensorCrop.top * (sensorCrop.height / activeArraySize.height)`
+                where `ty = sensorCrop.top * (sensorCrop.height / activeArraySize.height)`
                 and `tx = sensorCrop.left * (sensorCrop.width / activeArraySize.width)`. The
                 (sensorCrop.top, sensorCrop.left) is the coordinate based off the
                 android.sensor.info.activeArraySize.
