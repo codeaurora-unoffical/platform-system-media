@@ -95,6 +95,7 @@ static inline struct mixer_ctl *index_to_ctl(struct audio_route *ar,
     return ar->mixer_state[ctl_index].ctl;
 }
 
+#if 0
 static void __attribute__((unused)) path_print(struct audio_route *ar, struct mixer_path *path)
 {
     unsigned int i;
@@ -109,21 +110,30 @@ static void __attribute__((unused)) path_print(struct audio_route *ar, struct mi
             ALOGE("    id=%d value=%d", j, path->setting[i].value[j]);
     }
 }
+#endif
 
 static void path_free(struct audio_route *ar)
 {
     unsigned int i;
+    size_t j;
 
     for (i = 0; i < ar->num_mixer_paths; i++) {
         if (ar->mixer_path[i].name)
             free(ar->mixer_path[i].name);
         if (ar->mixer_path[i].setting) {
             if (ar->mixer_path[i].setting->value)
-                free(ar->mixer_path[i].setting->value);
+                for (j = 0; j < ar->mixer_path[i].length; j++) {
+                     free(ar->mixer_path[i].setting[j].value);
+                }
             free(ar->mixer_path[i].setting);
+            ar->mixer_path[i].size = 0;
+            ar->mixer_path[i].length = 0;
+            ar->mixer_path[i].setting = NULL;
         }
     }
     free(ar->mixer_path);
+    ar->mixer_path = NULL;
+    ar->mixer_path_size = 0;
 }
 
 static struct mixer_path *path_get_by_name(struct audio_route *ar,
@@ -390,11 +400,17 @@ static void start_tag(void *data, const XML_Char *tag_name,
             if (state->level == 1) {
                 /* top level path: create and stash the path */
                 state->path = path_create(ar, (char *)attr_name);
+                if (state->path == NULL)
+                    ALOGE("path created failed, please check the path if existed");
             } else {
                 /* nested path */
                 struct mixer_path *sub_path = path_get_by_name(ar, attr_name);
-                path_add_path(ar, state->path, sub_path);
-            }
+                if (!sub_path) {
+                    ALOGE("unable to find sub path '%s'", attr_name);
+                } else if (state->path != NULL) {
+                    path_add_path(ar, state->path, sub_path);
+                }
+           }
         }
     }
 
@@ -453,7 +469,8 @@ static void start_tag(void *data, const XML_Char *tag_name,
                 mixer_value.index = atoi((char *)attr_id);
             else
                 mixer_value.index = -1;
-            path_add_value(ar, state->path, &mixer_value);
+            if (state->path != NULL)
+                path_add_value(ar, state->path, &mixer_value);
         }
     }
 
@@ -813,5 +830,6 @@ void audio_route_free(struct audio_route *ar)
 {
     free_mixer_state(ar);
     mixer_close(ar->mixer);
+    path_free(ar);
     free(ar);
 }
