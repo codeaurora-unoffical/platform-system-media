@@ -118,6 +118,7 @@ enum {
                                 AUDIO_DEVICE_OUT_USB_HEADSET |
                                 AUDIO_DEVICE_OUT_HEARING_AID |
                                 AUDIO_DEVICE_OUT_ECHO_CANCELLER |
+                                AUDIO_DEVICE_OUT_EAVB |
                                 AUDIO_DEVICE_OUT_DEFAULT,
 
     AUDIO_DEVICE_OUT_ALL_A2DP = AUDIO_DEVICE_OUT_BLUETOOTH_A2DP |
@@ -156,6 +157,7 @@ enum {
                                 AUDIO_DEVICE_IN_PROXY |
                                 AUDIO_DEVICE_IN_USB_HEADSET |
                                 AUDIO_DEVICE_IN_BLUETOOTH_BLE |
+                                AUDIO_DEVICE_IN_EAVB |
                                 AUDIO_DEVICE_IN_DEFAULT,
 
     AUDIO_DEVICE_IN_ALL_SCO   = AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET,
