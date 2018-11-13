@@ -417,6 +417,9 @@ static tag_info_t android_request[ANDROID_REQUEST_END -
     [ ANDROID_REQUEST_AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS - ANDROID_REQUEST_START ] =
     { "availablePhysicalCameraRequestKeys",
                                         TYPE_INT32  },
+    [ ANDROID_REQUEST_CHARACTERISTIC_KEYS_NEEDING_PERMISSION - ANDROID_REQUEST_START ] =
+    { "characteristicKeysNeedingPermission",
+                                        TYPE_INT32  },
 };
 
 static tag_info_t android_scaler[ANDROID_SCALER_END -
@@ -666,6 +669,9 @@ static tag_info_t android_info[ANDROID_INFO_END -
     { "supportedHardwareLevel",        TYPE_BYTE   },
     [ ANDROID_INFO_VERSION - ANDROID_INFO_START ] =
     { "version",                       TYPE_BYTE   },
+    [ ANDROID_INFO_SUPPORTED_BUFFER_MANAGEMENT_VERSION - ANDROID_INFO_START ] =
+    { "supportedBufferManagementVersion",
+                                        TYPE_BYTE   },
 };
 
 static tag_info_t android_black_level[ANDROID_BLACK_LEVEL_END -
@@ -752,6 +758,25 @@ tag_info_t *tag_info[ANDROID_SECTION_COUNT] = {
     android_depth,
     android_logical_multi_camera,
     android_distortion_correction,
+};
+
+static int32_t tag_permission_needed[16] = {
+    ANDROID_LENS_POSE_ROTATION,
+    ANDROID_LENS_POSE_TRANSLATION,
+    ANDROID_LENS_INTRINSIC_CALIBRATION,
+    ANDROID_LENS_RADIAL_DISTORTION,
+    ANDROID_LENS_POSE_REFERENCE,
+    ANDROID_LENS_DISTORTION,
+    ANDROID_LENS_INFO_HYPERFOCAL_DISTANCE,
+    ANDROID_LENS_INFO_MINIMUM_FOCUS_DISTANCE,
+    ANDROID_SENSOR_REFERENCE_ILLUMINANT1,
+    ANDROID_SENSOR_REFERENCE_ILLUMINANT2,
+    ANDROID_SENSOR_CALIBRATION_TRANSFORM1,
+    ANDROID_SENSOR_CALIBRATION_TRANSFORM2,
+    ANDROID_SENSOR_COLOR_TRANSFORM1,
+    ANDROID_SENSOR_COLOR_TRANSFORM2,
+    ANDROID_SENSOR_FORWARD_MATRIX1,
+    ANDROID_SENSOR_FORWARD_MATRIX2,
 };
 
 int camera_metadata_enum_snprint(uint32_t tag,
@@ -1950,6 +1975,9 @@ int camera_metadata_enum_snprint(uint32_t tag,
         case ANDROID_REQUEST_AVAILABLE_PHYSICAL_CAMERA_REQUEST_KEYS: {
             break;
         }
+        case ANDROID_REQUEST_CHARACTERISTIC_KEYS_NEEDING_PERMISSION: {
+            break;
+        }
 
         case ANDROID_SCALER_CROP_REGION: {
             break;
@@ -2660,6 +2688,17 @@ int camera_metadata_enum_snprint(uint32_t tag,
             break;
         }
         case ANDROID_INFO_VERSION: {
+            break;
+        }
+        case ANDROID_INFO_SUPPORTED_BUFFER_MANAGEMENT_VERSION: {
+            switch (value) {
+                case ANDROID_INFO_SUPPORTED_BUFFER_MANAGEMENT_VERSION_HIDL_DEVICE_3_5:
+                    msg = "HIDL_DEVICE_3_5";
+                    ret = 0;
+                    break;
+                default:
+                    msg = "error: enum value out of range";
+            }
             break;
         }
 

@@ -671,6 +671,8 @@
             ><a href="#static_android.request.availableSessionKeys">android.request.availableSessionKeys</a></li>
             <li
             ><a href="#static_android.request.availablePhysicalCameraRequestKeys">android.request.availablePhysicalCameraRequestKeys</a></li>
+            <li
+            ><a href="#static_android.request.characteristicKeysNeedingPermission">android.request.characteristicKeysNeedingPermission</a></li>
           </ul>
         </li>
         <li>
@@ -1083,6 +1085,8 @@
             ><a href="#static_android.info.supportedHardwareLevel">android.info.supportedHardwareLevel</a></li>
             <li
             ><a href="#static_android.info.version">android.info.version</a></li>
+            <li
+            ><a href="#static_android.info.supportedBufferManagementVersion">android.info.supportedBufferManagementVersion</a></li>
           </ul>
         </li>
       </ul> <!-- toc_section -->
@@ -17230,8 +17234,14 @@ results for use cases such as image stabilization or augmented reality.<wbr/></p
                   <li>
                     <span class="entry_type_enum_name">LOGICAL_MULTI_CAMERA (v3.3)</span>
                     <span class="entry_type_enum_optional">[optional]</span>
-                    <span class="entry_type_enum_notes"><p>The camera device is a logical camera backed by two or more physical cameras that are
-also exposed to the application.<wbr/></p>
+                    <span class="entry_type_enum_notes"><p>The camera device is a logical camera backed by two or more physical cameras.<wbr/> In
+API level 28,<wbr/> the physical cameras must also be exposed to the application via
+<a href="https://developer.android.com/reference/android/hardware/camera2/CameraManager.html#getCameraIdList">CameraManager#getCameraIdList</a>.<wbr/> Starting from API
+level 29,<wbr/> some or all physical cameras may not be independently exposed to the
+application,<wbr/> in which case the physical camera IDs will not be available in
+<a href="https://developer.android.com/reference/android/hardware/camera2/CameraManager.html#getCameraIdList">CameraManager#getCameraIdList</a>.<wbr/> But the application
+can still query the physical cameras' characteristics by calling
+<a href="https://developer.android.com/reference/android/hardware/camera2/CameraManager.html#getCameraCharacteristics">CameraManager#getCameraCharacteristics</a>.<wbr/></p>
 <p>Camera application shouldn't assume that there are at most 1 rear camera and 1 front
 camera in the system.<wbr/> For an application that switches between front and back cameras,<wbr/>
 the recommendation is to switch between the first rear camera and the first front
@@ -17832,6 +17842,74 @@ with any other controls that can have impact on the dual-camera sync.<wbr/></p>
 <p>The public camera2 API will always make the vendor tags visible
 via
 <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#getAvailablePhysicalCameraRequestKeys">CameraCharacteristics#getAvailablePhysicalCameraRequestKeys</a>.<wbr/></p>
+            </td>
+          </tr>
+
+          <tr class="entry_spacer"><td class="entry_spacer" colspan="7"></td></tr>
+           <!-- end of entry -->
+        
+                
+          <tr class="entry" id="static_android.request.characteristicKeysNeedingPermission">
+            <td class="entry_name
+             " rowspan="5">
+              android.<wbr/>request.<wbr/>characteristic<wbr/>Keys<wbr/>Needing<wbr/>Permission
+            </td>
+            <td class="entry_type">
+                <span class="entry_type_name">int32</span>
+                <span class="entry_type_container">x</span>
+
+                <span class="entry_type_array">
+                  n
+                </span>
+              <span class="entry_type_visibility"> [hidden]</span>
+
+
+              <span class="entry_type_hwlevel">[legacy] </span>
+
+
+
+
+            </td> <!-- entry_type -->
+
+            <td class="entry_description">
+              <p>A list of camera characteristics keys that are only available
+in case the camera client has camera permission.<wbr/></p>
+            </td>
+
+            <td class="entry_units">
+            </td>
+
+            <td class="entry_range">
+            </td>
+
+            <td class="entry_hal_version">
+              <p>3.<wbr/>4</p>
+            </td>
+
+            <td class="entry_tags">
+            </td>
+
+          </tr>
+          <tr class="entries_header">
+            <th class="th_details" colspan="6">Details</th>
+          </tr>
+          <tr class="entry_cont">
+            <td class="entry_details" colspan="6">
+              <p>The entry contains a subset of
+<a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html#getKeys">CameraCharacteristics#getKeys</a> that require camera clients
+to acquire the <a href="https://developer.android.com/reference/android/Manifest/permission.html#CAMERA">permission#CAMERA</a> permission before calling
+<a href="https://developer.android.com/reference/android/hardware/camera2/CameraManager.html#getCameraCharacteristics">CameraManager#getCameraCharacteristics</a>.<wbr/> If the
+permission is not held by the camera client,<wbr/> then the values of the repsective properties
+will not be present in <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.html">CameraCharacteristics</a>.<wbr/></p>
+            </td>
+          </tr>
+
+          <tr class="entries_header">
+            <th class="th_details" colspan="6">HAL Implementation Details</th>
+          </tr>
+          <tr class="entry_cont">
+            <td class="entry_details" colspan="6">
+              <p>Do not set this property directly,<wbr/> camera service will overwrite any previous values.<wbr/></p>
             </td>
           </tr>
 
@@ -28689,6 +28767,65 @@ whitespace,<wbr/> i.<wbr/>e.<wbr/> it must match regular expression "[\p{Alnum}\
 It must not exceed 256 characters.<wbr/></p>
             </td>
           </tr>
+
+          <tr class="entry_spacer"><td class="entry_spacer" colspan="7"></td></tr>
+           <!-- end of entry -->
+        
+                
+          <tr class="entry" id="static_android.info.supportedBufferManagementVersion">
+            <td class="entry_name
+             " rowspan="3">
+              android.<wbr/>info.<wbr/>supported<wbr/>Buffer<wbr/>Management<wbr/>Version
+            </td>
+            <td class="entry_type">
+                <span class="entry_type_name entry_type_name_enum">byte</span>
+
+              <span class="entry_type_visibility"> [system]</span>
+
+
+
+
+
+                <ul class="entry_type_enum">
+                  <li>
+                    <span class="entry_type_enum_name">HIDL_DEVICE_3_5 (v3.4)</span>
+                    <span class="entry_type_enum_notes"><p>This camera device supports and opts in to the buffer management APIs provided by
+HIDL ICameraDevice version 3.<wbr/>5.<wbr/></p></span>
+                  </li>
+                </ul>
+
+            </td> <!-- entry_type -->
+
+            <td class="entry_description">
+              <p>The version of buffer management API this camera device supports and opts into.<wbr/></p>
+            </td>
+
+            <td class="entry_units">
+            </td>
+
+            <td class="entry_range">
+            </td>
+
+            <td class="entry_hal_version">
+              <p>3.<wbr/>4</p>
+            </td>
+
+            <td class="entry_tags">
+            </td>
+
+          </tr>
+          <tr class="entries_header">
+            <th class="th_details" colspan="6">Details</th>
+          </tr>
+          <tr class="entry_cont">
+            <td class="entry_details" colspan="6">
+              <p>When this key is not present,<wbr/> camera framework will interact with this camera device
+without any buffer management HAL API.<wbr/> When this key is present and camera framework
+supports the buffer management API version,<wbr/> camera framework will interact with camera
+HAL using such version of buffer management API.<wbr/></p>
+            </td>
+          </tr>
+
 
           <tr class="entry_spacer"><td class="entry_spacer" colspan="7"></td></tr>
            <!-- end of entry -->
