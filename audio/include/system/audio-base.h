@@ -321,6 +321,7 @@ enum {
     AUDIO_DEVICE_OUT_USB_HEADSET               = 0x4000000u,
     AUDIO_DEVICE_OUT_HEARING_AID               = 0x8000000u,
     AUDIO_DEVICE_OUT_ECHO_CANCELLER            = 0x10000000u,
+    AUDIO_DEVICE_OUT_EAVB                      = 0x20000000u,
     AUDIO_DEVICE_OUT_DEFAULT                   = 0x40000000u, // BIT_DEFAULT
 
     AUDIO_DEVICE_IN_COMMUNICATION              = 0x80000001u, // BIT_IN | 0x1
@@ -349,6 +350,7 @@ enum {
     AUDIO_DEVICE_IN_PROXY                      = 0x81000000u, // BIT_IN | 0x1000000
     AUDIO_DEVICE_IN_USB_HEADSET                = 0x82000000u, // BIT_IN | 0x2000000
     AUDIO_DEVICE_IN_BLUETOOTH_BLE              = 0x84000000u, // BIT_IN | 0x4000000
+    AUDIO_DEVICE_IN_EAVB                       = 0x88000000u, // BIT_IN | 0x8000000
     AUDIO_DEVICE_IN_DEFAULT                    = 0xC0000000u, // BIT_IN | BIT_DEFAULT
 };
 
