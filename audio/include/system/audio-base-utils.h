@@ -36,7 +36,7 @@ enum {
    /** Total number of stream. */
     AUDIO_STREAM_CNT          = AUDIO_STREAM_PATCH + 1,
 
-    AUDIO_SOURCE_MAX          = AUDIO_SOURCE_UNPROCESSED,
+    AUDIO_SOURCE_MAX          = AUDIO_SOURCE_VOICE_PERFORMANCE,
     AUDIO_SOURCE_CNT          = AUDIO_SOURCE_MAX + 1,
 
     AUDIO_MODE_MAX            = AUDIO_MODE_IN_COMMUNICATION,
@@ -66,7 +66,9 @@ enum {
                                 AUDIO_CHANNEL_OUT_TOP_BACK_CENTER |
                                 AUDIO_CHANNEL_OUT_TOP_BACK_RIGHT |
                                 AUDIO_CHANNEL_OUT_TOP_SIDE_LEFT |
-                                AUDIO_CHANNEL_OUT_TOP_SIDE_RIGHT,
+                                AUDIO_CHANNEL_OUT_TOP_SIDE_RIGHT |
+                                AUDIO_CHANNEL_OUT_HAPTIC_B |
+                                AUDIO_CHANNEL_OUT_HAPTIC_A,
 
     AUDIO_CHANNEL_IN_ALL      = AUDIO_CHANNEL_IN_LEFT |
                                 AUDIO_CHANNEL_IN_RIGHT |
@@ -88,6 +90,9 @@ enum {
                                 AUDIO_CHANNEL_IN_LOW_FREQUENCY |
                                 AUDIO_CHANNEL_IN_TOP_LEFT |
                                 AUDIO_CHANNEL_IN_TOP_RIGHT,
+
+    AUDIO_CHANNEL_HAPTIC_ALL  = AUDIO_CHANNEL_OUT_HAPTIC_B |
+                                AUDIO_CHANNEL_OUT_HAPTIC_A,
 
     AUDIO_DEVICE_OUT_ALL      = AUDIO_DEVICE_OUT_EARPIECE |
                                 AUDIO_DEVICE_OUT_SPEAKER |
@@ -156,6 +161,8 @@ enum {
                                 AUDIO_DEVICE_IN_PROXY |
                                 AUDIO_DEVICE_IN_USB_HEADSET |
                                 AUDIO_DEVICE_IN_BLUETOOTH_BLE |
+                                AUDIO_DEVICE_IN_HDMI_ARC |
+                                AUDIO_DEVICE_IN_ECHO_REFERENCE |
                                 AUDIO_DEVICE_IN_DEFAULT,
 
     AUDIO_DEVICE_IN_ALL_SCO   = AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET,

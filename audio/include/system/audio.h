@@ -85,6 +85,39 @@ typedef struct {
     char                 tags[AUDIO_ATTRIBUTES_TAGS_MAX_SIZE]; /* UTF8 */
 } __attribute__((packed)) audio_attributes_t; // sent through Binder;
 
+static const audio_attributes_t AUDIO_ATTRIBUTES_INITIALIZER = {
+    /* .content_type = */ AUDIO_CONTENT_TYPE_UNKNOWN,
+    /* .usage = */ AUDIO_USAGE_UNKNOWN,
+    /* .source = */ AUDIO_SOURCE_DEFAULT,
+    /* .flags = */ AUDIO_INPUT_FLAG_NONE,
+    /* .tags = */ ""
+};
+
+static inline audio_attributes_t attributes_initializer(audio_usage_t usage)
+{
+    audio_attributes_t attributes = AUDIO_ATTRIBUTES_INITIALIZER;
+    attributes.usage = usage;
+    return attributes;
+}
+
+static inline void audio_flags_to_audio_output_flags(
+                                           const audio_flags_mask_t audio_flags,
+                                           audio_output_flags_t *flags)
+{
+    if ((audio_flags & AUDIO_FLAG_HW_AV_SYNC) != 0) {
+        *flags = (audio_output_flags_t)(*flags |
+            AUDIO_OUTPUT_FLAG_HW_AV_SYNC | AUDIO_OUTPUT_FLAG_DIRECT);
+    }
+    if ((audio_flags & AUDIO_FLAG_LOW_LATENCY) != 0) {
+        *flags = (audio_output_flags_t)(*flags | AUDIO_OUTPUT_FLAG_FAST);
+    }
+    // check deep buffer after flags have been modified above
+    if (*flags == AUDIO_OUTPUT_FLAG_NONE && (audio_flags & AUDIO_FLAG_DEEP_BUFFER) != 0) {
+        *flags = AUDIO_OUTPUT_FLAG_DEEP_BUFFER;
+    }
+}
+
+
 /* a unique ID allocated by AudioFlinger for use as an audio_io_handle_t, audio_session_t,
  * effect ID (int), audio_module_handle_t, and audio_patch_handle_t.
  * Audio port IDs (audio_port_handle_t) are allocated by AudioPolicy
@@ -579,17 +612,21 @@ struct audio_mmap_position {
                                     is called */
 };
 
-/** Metadata of a record track for an in stream. */
+/** Metadata of a playback track for an in stream. */
 typedef struct playback_track_metadata {
     audio_usage_t usage;
     audio_content_type_t content_type;
     float gain; // Normalized linear volume. 0=silence, 1=0dbfs...
 } playback_track_metadata_t;
 
-/** Metadata of a playback track for an out stream. */
+/** Metadata of a record track for an out stream. */
 typedef struct record_track_metadata {
     audio_source_t source;
     float gain; // Normalized linear volume. 0=silence, 1=0dbfs...
+    // For record tracks originating from a software patch, the dest_device
+    // fields provide information about the downstream device.
+    audio_devices_t dest_device;
+    char dest_device_address[AUDIO_DEVICE_MAX_ADDRESS_LEN];
 } record_track_metadata_t;
 
 
@@ -883,6 +920,22 @@ static inline audio_channel_mask_t audio_channel_in_mask_from_count(uint32_t cha
             AUDIO_CHANNEL_REPRESENTATION_POSITION, bits);
 }
 
+/* Derive a default haptic channel mask from a channel count.
+ */
+static inline audio_channel_mask_t haptic_channel_mask_from_count(uint32_t channel_count)
+{
+    switch(channel_count) {
+    case 0:
+        return AUDIO_CHANNEL_NONE;
+    case 1:
+        return AUDIO_CHANNEL_OUT_HAPTIC_A;
+    case 2:
+        return AUDIO_CHANNEL_OUT_HAPTIC_AB;
+    default:
+        return AUDIO_CHANNEL_INVALID;
+    }
+}
+
 static inline audio_channel_mask_t audio_channel_mask_in_to_out(audio_channel_mask_t in)
 {
     switch (in) {
@@ -925,6 +978,20 @@ static inline audio_channel_mask_t audio_channel_mask_out_to_in(audio_channel_ma
     default:
         return AUDIO_CHANNEL_INVALID;
     }
+}
+
+static inline bool audio_channel_position_mask_is_out_canonical(audio_channel_mask_t channelMask)
+{
+    if (audio_channel_mask_get_representation(channelMask)
+            != AUDIO_CHANNEL_REPRESENTATION_POSITION) {
+        return false;
+    }
+    const uint32_t audioChannelCount = audio_channel_count_from_out_mask(
+            channelMask & ~AUDIO_CHANNEL_HAPTIC_ALL);
+    const uint32_t hapticChannelCount = audio_channel_count_from_out_mask(
+            channelMask & AUDIO_CHANNEL_HAPTIC_ALL);
+    return channelMask == (audio_channel_out_mask_from_count(audioChannelCount) |
+            haptic_channel_mask_from_count(hapticChannelCount));
 }
 
 static inline bool audio_is_valid_format(audio_format_t format)
@@ -980,6 +1047,17 @@ static inline bool audio_is_valid_format(audio_format_t format)
     case AUDIO_FORMAT_MAT_1_0:
     case AUDIO_FORMAT_MAT_2_0:
     case AUDIO_FORMAT_MAT_2_1:
+    case AUDIO_FORMAT_SBC:
+    case AUDIO_FORMAT_APTX:
+    case AUDIO_FORMAT_APTX_HD:
+    case AUDIO_FORMAT_AAC_LATM:
+    case AUDIO_FORMAT_AAC_LATM_LC:
+    case AUDIO_FORMAT_AAC_LATM_HE_V1:
+    case AUDIO_FORMAT_AAC_LATM_HE_V2:
+    case AUDIO_FORMAT_CELT:
+    case AUDIO_FORMAT_APTX_ADAPTIVE:
+    case AUDIO_FORMAT_LHDC:
+    case AUDIO_FORMAT_LHDC_LL:
         return true;
     default:
         return false;
@@ -1074,6 +1152,7 @@ static inline bool audio_device_is_digital(audio_devices_t device) {
         // input
         return (~AUDIO_DEVICE_BIT_IN & device & (AUDIO_DEVICE_IN_ALL_USB |
                           AUDIO_DEVICE_IN_HDMI |
+                          AUDIO_DEVICE_IN_HDMI_ARC |
                           AUDIO_DEVICE_IN_SPDIF |
                           AUDIO_DEVICE_IN_IP |
                           AUDIO_DEVICE_IN_BUS)) != 0;
