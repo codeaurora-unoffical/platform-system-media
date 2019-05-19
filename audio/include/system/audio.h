@@ -73,7 +73,9 @@ enum {
     AUDIO_FLAG_BYPASS_MUTE                = 0x80,
     AUDIO_FLAG_LOW_LATENCY                = 0x100,
     AUDIO_FLAG_DEEP_BUFFER                = 0x200,
-    AUDIO_FLAG_NO_CAPTURE                 = 0X400,
+    AUDIO_FLAG_NO_MEDIA_PROJECTION        = 0X400,
+    AUDIO_FLAG_MUTE_HAPTIC                = 0x800,
+    AUDIO_FLAG_NO_SYSTEM_CAPTURE          = 0X1000,
 };
 
 /* Audio attributes */
@@ -90,7 +92,7 @@ static const audio_attributes_t AUDIO_ATTRIBUTES_INITIALIZER = {
     /* .content_type = */ AUDIO_CONTENT_TYPE_UNKNOWN,
     /* .usage = */ AUDIO_USAGE_UNKNOWN,
     /* .source = */ AUDIO_SOURCE_DEFAULT,
-    /* .flags = */ AUDIO_INPUT_FLAG_NONE,
+    /* .flags = */ AUDIO_FLAG_NONE,
     /* .tags = */ ""
 };
 
@@ -135,7 +137,7 @@ typedef enum {
     AUDIO_UNIQUE_ID_USE_PATCH = 4,
     AUDIO_UNIQUE_ID_USE_OUTPUT = 5,
     AUDIO_UNIQUE_ID_USE_INPUT = 6,
-    AUDIO_UNIQUE_ID_USE_PLAYER = 7,
+    AUDIO_UNIQUE_ID_USE_CLIENT = 7,  // client-side players and recorders
     AUDIO_UNIQUE_ID_USE_MAX = 8,  // must be a power-of-two
     AUDIO_UNIQUE_ID_USE_MASK = AUDIO_UNIQUE_ID_USE_MAX - 1
 } audio_unique_id_use_t;
@@ -1014,51 +1016,112 @@ static inline bool audio_is_valid_format(audio_format_t format)
     case AUDIO_FORMAT_MP3:
     case AUDIO_FORMAT_AMR_NB:
     case AUDIO_FORMAT_AMR_WB:
+        return true;
     case AUDIO_FORMAT_AAC:
-    case AUDIO_FORMAT_AAC_ADTS:
+        switch (format) {
+        case AUDIO_FORMAT_AAC:
+        case AUDIO_FORMAT_AAC_MAIN:
+        case AUDIO_FORMAT_AAC_LC:
+        case AUDIO_FORMAT_AAC_SSR:
+        case AUDIO_FORMAT_AAC_LTP:
+        case AUDIO_FORMAT_AAC_HE_V1:
+        case AUDIO_FORMAT_AAC_SCALABLE:
+        case AUDIO_FORMAT_AAC_ERLC:
+        case AUDIO_FORMAT_AAC_LD:
+        case AUDIO_FORMAT_AAC_HE_V2:
+        case AUDIO_FORMAT_AAC_ELD:
+        case AUDIO_FORMAT_AAC_XHE:
+            return true;
+        default:
+            return false;
+        }
+        /* not reached */
     case AUDIO_FORMAT_HE_AAC_V1:
     case AUDIO_FORMAT_HE_AAC_V2:
-    case AUDIO_FORMAT_AAC_ELD:
-    case AUDIO_FORMAT_AAC_XHE:
     case AUDIO_FORMAT_VORBIS:
     case AUDIO_FORMAT_OPUS:
     case AUDIO_FORMAT_AC3:
+        return true;
     case AUDIO_FORMAT_E_AC3:
+        switch (format) {
+        case AUDIO_FORMAT_E_AC3:
+        case AUDIO_FORMAT_E_AC3_JOC:
+            return true;
+        default:
+            return false;
+        }
+        /* not reached */
     case AUDIO_FORMAT_DTS:
     case AUDIO_FORMAT_DTS_HD:
     case AUDIO_FORMAT_IEC61937:
     case AUDIO_FORMAT_DOLBY_TRUEHD:
-    case AUDIO_FORMAT_QCELP:
     case AUDIO_FORMAT_EVRC:
     case AUDIO_FORMAT_EVRCB:
     case AUDIO_FORMAT_EVRCWB:
+    case AUDIO_FORMAT_EVRCNW:
     case AUDIO_FORMAT_AAC_ADIF:
+    case AUDIO_FORMAT_WMA:
+    case AUDIO_FORMAT_WMA_PRO:
     case AUDIO_FORMAT_AMR_WB_PLUS:
     case AUDIO_FORMAT_MP2:
-    case AUDIO_FORMAT_EVRCNW:
+    case AUDIO_FORMAT_QCELP:
+    case AUDIO_FORMAT_DSD:
     case AUDIO_FORMAT_FLAC:
     case AUDIO_FORMAT_ALAC:
     case AUDIO_FORMAT_APE:
-    case AUDIO_FORMAT_WMA:
-    case AUDIO_FORMAT_WMA_PRO:
-    case AUDIO_FORMAT_DSD:
-    case AUDIO_FORMAT_AC4:
-    case AUDIO_FORMAT_LDAC:
-    case AUDIO_FORMAT_E_AC3_JOC:
-    case AUDIO_FORMAT_MAT_1_0:
-    case AUDIO_FORMAT_MAT_2_0:
-    case AUDIO_FORMAT_MAT_2_1:
+        return true;
+    case AUDIO_FORMAT_AAC_ADTS:
+        switch (format) {
+        case AUDIO_FORMAT_AAC_ADTS:
+        case AUDIO_FORMAT_AAC_ADTS_MAIN:
+        case AUDIO_FORMAT_AAC_ADTS_LC:
+        case AUDIO_FORMAT_AAC_ADTS_SSR:
+        case AUDIO_FORMAT_AAC_ADTS_LTP:
+        case AUDIO_FORMAT_AAC_ADTS_HE_V1:
+        case AUDIO_FORMAT_AAC_ADTS_SCALABLE:
+        case AUDIO_FORMAT_AAC_ADTS_ERLC:
+        case AUDIO_FORMAT_AAC_ADTS_LD:
+        case AUDIO_FORMAT_AAC_ADTS_HE_V2:
+        case AUDIO_FORMAT_AAC_ADTS_ELD:
+        case AUDIO_FORMAT_AAC_ADTS_XHE:
+            return true;
+        default:
+            return false;
+        }
+        /* not reached */
     case AUDIO_FORMAT_SBC:
     case AUDIO_FORMAT_APTX:
     case AUDIO_FORMAT_APTX_HD:
+    case AUDIO_FORMAT_AC4:
+    case AUDIO_FORMAT_LDAC:
+        return true;
+    case AUDIO_FORMAT_MAT:
+        switch (format) {
+        case AUDIO_FORMAT_MAT:
+        case AUDIO_FORMAT_MAT_1_0:
+        case AUDIO_FORMAT_MAT_2_0:
+        case AUDIO_FORMAT_MAT_2_1:
+            return true;
+        default:
+            return false;
+        }
+        /* not reached */
     case AUDIO_FORMAT_AAC_LATM:
-    case AUDIO_FORMAT_AAC_LATM_LC:
-    case AUDIO_FORMAT_AAC_LATM_HE_V1:
-    case AUDIO_FORMAT_AAC_LATM_HE_V2:
+        switch (format) {
+        case AUDIO_FORMAT_AAC_LATM:
+        case AUDIO_FORMAT_AAC_LATM_LC:
+        case AUDIO_FORMAT_AAC_LATM_HE_V1:
+        case AUDIO_FORMAT_AAC_LATM_HE_V2:
+            return true;
+        default:
+            return false;
+        }
+        /* not reached */
     case AUDIO_FORMAT_CELT:
     case AUDIO_FORMAT_APTX_ADAPTIVE:
     case AUDIO_FORMAT_LHDC:
     case AUDIO_FORMAT_LHDC_LL:
+    case AUDIO_FORMAT_APTX_TWSP:
         return true;
     default:
         return false;
@@ -1138,13 +1201,22 @@ static inline char *audio_device_address_to_parameter(audio_devices_t device, co
     const size_t kSize = AUDIO_DEVICE_MAX_ADDRESS_LEN + sizeof("a2dp_sink_address=");
     char param[kSize];
 
-    if (device & AUDIO_DEVICE_OUT_ALL_A2DP)
-        snprintf(param, kSize, "%s=%s", "a2dp_sink_address", address);
-    else if (device & AUDIO_DEVICE_OUT_REMOTE_SUBMIX)
-        snprintf(param, kSize, "%s=%s", "mix", address);
-    else
-        snprintf(param, kSize, "%s", address);
-
+    if ((device & AUDIO_DEVICE_BIT_IN) != 0) {
+        device &= ~AUDIO_DEVICE_BIT_IN;
+        if (device & AUDIO_DEVICE_IN_BLUETOOTH_A2DP)
+            snprintf(param, kSize, "%s=%s", "a2dp_source_address", address);
+        else if (device & AUDIO_DEVICE_IN_REMOTE_SUBMIX)
+            snprintf(param, kSize, "%s=%s", "mix", address);
+        else
+            snprintf(param, kSize, "%s", address);
+    } else {
+        if (device & AUDIO_DEVICE_OUT_ALL_A2DP)
+            snprintf(param, kSize, "%s=%s", "a2dp_sink_address", address);
+        else if (device & AUDIO_DEVICE_OUT_REMOTE_SUBMIX)
+            snprintf(param, kSize, "%s=%s", "mix", address);
+        else
+            snprintf(param, kSize, "%s", address);
+    }
     return strdup(param);
 }
 
