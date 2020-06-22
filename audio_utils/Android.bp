@@ -17,6 +17,7 @@ cc_library_headers {
     host_supported: true,
     vendor_available: true,
     export_include_dirs: ["include"],
+    sdk_version: "current",
 }
 
 cc_library {
@@ -79,6 +80,7 @@ cc_library {
             cflags: ["-D__unused=__attribute__((unused))"],
         },
     },
+    min_sdk_version: "29",
 }
 
 cc_library_static {
@@ -93,6 +95,7 @@ cc_library_static {
     },
 
     srcs: ["fixedfft.cpp"],
+    min_sdk_version: "29",
 }
 
 cc_library_static {
@@ -114,6 +117,7 @@ cc_library_static {
         "primitives.c",
         "roundup.c",
     ],
+    min_sdk_version: "29",
 }
 
 cc_library_shared {
